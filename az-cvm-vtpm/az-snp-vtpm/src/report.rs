@@ -3,6 +3,7 @@
 
 #[cfg(feature = "verifier")]
 use super::certs::Vcek;
+use az_cvm_vtpm::hcl::HclReport;
 use az_cvm_vtpm::hcl::{self, SNP_REPORT_SIZE};
 #[cfg(feature = "attester")]
 use az_cvm_vtpm::vtpm;
