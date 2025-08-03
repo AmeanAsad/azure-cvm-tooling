@@ -3,8 +3,10 @@
 
 #[cfg(feature = "verifier")]
 use super::certs::Vcek;
-use az_cvm_vtpm::hcl::{self, HclReport, SNP_REPORT_SIZE};
+use az_cvm_vtpm::hcl::{self, SNP_REPORT_SIZE};
+#[cfg(feature = "attester")]
 use az_cvm_vtpm::vtpm;
+use openssl::bn::BigNum;
 #[cfg(feature = "verifier")]
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
 pub use sev::firmware::guest::AttestationReport;
@@ -37,7 +39,13 @@ impl Validateable for AttestationReport {
             return Err(ValidateError::Tcb);
         }
 
-        let report_sig: EcdsaSig = (&self.signature).try_into()?;
+        let r_bytes: Vec<u8> = self.signature.r().iter().rev().cloned().collect();
+        let s_bytes: Vec<u8> = self.signature.s().iter().rev().cloned().collect();
+
+        let r = BigNum::from_slice(&r_bytes)?;
+        let s = BigNum::from_slice(&s_bytes)?;
+
+        let report_sig: EcdsaSig = EcdsaSig::from_private_components(r, s).unwrap();
         let vcek_pubkey = vcek.0.public_key()?.ec_key()?;
 
         let mut hasher = Sha384::new();
@@ -57,6 +65,7 @@ pub enum ReportError {
     #[error("deserialization error")]
     Parse(#[from] Box<bincode::ErrorKind>),
     #[error("vTPM error")]
+    #[cfg(feature = "attester")]
     Vtpm(#[from] vtpm::ReportError),
     #[error("HCL error")]
     Hcl(#[from] hcl::HclError),
@@ -88,6 +97,7 @@ fn get_report_base(report: &AttestationReport) -> Result<Vec<u8>, Box<bincode::E
 }
 
 /// Fetch TdReport from vTPM and parse it
+#[cfg(feature = "attester")]
 pub fn get_report() -> Result<AttestationReport, ReportError> {
     let bytes = vtpm::get_report()?;
     let hcl_report = HclReport::new(bytes)?;

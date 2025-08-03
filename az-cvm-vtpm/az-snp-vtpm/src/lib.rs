@@ -34,7 +34,9 @@
 //!  }
 //!  ```
 
-pub use az_cvm_vtpm::{hcl, vtpm};
+pub use az_cvm_vtpm::hcl;
+#[cfg(feature = "attester")]
+pub use az_cvm_vtpm::vtpm;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -48,6 +50,8 @@ pub enum HttpError {
 /// Determines if the current VM is an SEV-SNP CVM.
 /// Returns `Ok(true)` if the VM is an SEV-SNP CVM, `Ok(false)` if it is not,
 /// and `Err` if an error occurs.
+/// #[cfg(feature = "attester")]
+#[cfg(feature = "attester")]
 pub fn is_snp_cvm() -> Result<bool, vtpm::ReportError> {
     let bytes = vtpm::get_report()?;
     let Ok(hcl_report) = hcl::HclReport::new(bytes) else {
@@ -61,6 +65,5 @@ pub fn is_snp_cvm() -> Result<bool, vtpm::ReportError> {
 pub mod amd_kds;
 #[cfg(feature = "verifier")]
 pub mod certs;
-#[cfg(feature = "attester")]
 pub mod imds;
 pub mod report;
