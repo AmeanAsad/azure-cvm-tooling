@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-use crate::quote::{Quote, QuoteError};
+use crate::quote::Quote;
 use core::time::Duration;
 use serde::{Deserialize, Serialize};
 use std::thread;
