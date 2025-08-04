@@ -14,9 +14,9 @@ const KDS_VCEK: &str = "/vcek/v1";
 const SEV_PROD_NAME: &str = "Milan";
 const KDS_CERT_CHAIN: &str = "cert_chain";
 
-fn get(url: &str) -> Result<Vec<u8>, HttpError> {
-    let response = reqwest::blocking::get(url)?;
-    let bytes = response.bytes()?;
+async fn get(url: &str) -> Result<Vec<u8>, HttpError> {
+    let response = reqwest::get(url).await?; // Remove ::blocking
+    let bytes = response.bytes().await?;
     Ok(bytes.to_vec())
 }
 
@@ -33,9 +33,10 @@ pub enum AmdKdsError {
 }
 
 /// Retrieve the AMD chain of trust (ASK & ARK) from AMD's KDS
-pub fn get_cert_chain() -> Result<AmdChain, AmdKdsError> {
+pub async fn get_cert_chain() -> Result<AmdChain, AmdKdsError> {
+    // Make async
     let url = format!("{KDS_CERT_SITE}{KDS_VCEK}/{SEV_PROD_NAME}/{KDS_CERT_CHAIN}");
-    let bytes = get(&url)?;
+    let bytes = get(&url).await?; // Add .await
 
     // Parse PEM certificates
     let pem_objects = parse_many(&bytes)?;
@@ -62,7 +63,8 @@ fn hexify(bytes: &[u8]) -> String {
 }
 
 /// Retrieve a VCEK cert from AMD's KDS, based on an AttestationReport's platform information
-pub fn get_vcek(report: &AttestationReport) -> Result<Vcek, AmdKdsError> {
+pub async fn get_vcek(report: &AttestationReport) -> Result<Vcek, AmdKdsError> {
+    // Make async
     let hw_id = hexify(&*report.chip_id);
     let url = format!(
         "{KDS_CERT_SITE}{KDS_VCEK}/{SEV_PROD_NAME}/{hw_id}?blSPL={:02}&teeSPL={:02}&snpSPL={:02}&ucodeSPL={:02}",
@@ -72,7 +74,7 @@ pub fn get_vcek(report: &AttestationReport) -> Result<Vcek, AmdKdsError> {
         report.reported_tcb.microcode
     );
 
-    let bytes = get(&url)?;
+    let bytes = get(&url).await?; // Add .await
     let cert = Certificate::from_der(&bytes)?;
     let vcek = Vcek(cert);
     Ok(vcek)

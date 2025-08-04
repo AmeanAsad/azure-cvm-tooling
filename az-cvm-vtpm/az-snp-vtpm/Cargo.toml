@@ -20,7 +20,6 @@ required-features = ["attester", "verifier"]
 az-cvm-vtpm = { path = "..", version = "0.7.1" }
 bincode.workspace = true
 clap.workspace = true
-openssl = { workspace = true, optional = true }
 serde.workspace = true
 sev.workspace = true
 thiserror.workspace = true
@@ -43,5 +42,5 @@ hex.workspace = true
 [features]
 default = ["verifier"]
 attester = ["az-cvm-vtpm/tpm"]
-verifier = ["az-cvm-vtpm/openssl", "openssl"]
+verifier = []
 integration_test = []

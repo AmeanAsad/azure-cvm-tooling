@@ -9,5 +9,5 @@ default = []
 attester = ["az-snp-vtpm/attester"]
 
 [dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 az-snp-vtpm = { path = "../" }
-openssl.workspace = true
