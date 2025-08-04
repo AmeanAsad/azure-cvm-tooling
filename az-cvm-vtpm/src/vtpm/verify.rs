@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-use crate::quote::{Quote, QuoteError};
+use crate::quote::Quote;
+use crate::vtpm::QuoteError;
 use openssl::pkey::{PKey, Public};
 use openssl::{hash::MessageDigest, sha::Sha256, sign::Verifier};
 use thiserror::Error;
