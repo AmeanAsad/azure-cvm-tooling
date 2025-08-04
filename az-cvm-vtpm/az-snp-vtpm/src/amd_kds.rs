@@ -13,10 +13,9 @@ const SEV_PROD_NAME: &str = "Milan";
 const KDS_CERT_CHAIN: &str = "cert_chain";
 
 fn get(url: &str) -> Result<Vec<u8>, HttpError> {
-    let mut body = ureq::get(url).call().map_err(Box::new)?.into_reader();
-    let mut buffer = Vec::new();
-    body.read_to_end(&mut buffer)?;
-    Ok(buffer)
+    let response = reqwest::blocking::get(url)?;
+    let bytes = response.bytes()?;
+    Ok(bytes.to_vec())
 }
 
 #[derive(Error, Debug)]

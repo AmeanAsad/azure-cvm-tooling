@@ -13,14 +13,14 @@
 //!  use az_snp_vtpm::report::{AttestationReport, Validateable};
 //!  use std::error::Error;
 //!
-//!  fn main() -> Result<(), Box<dyn Error>> {
+//!  async fn main() -> Result<(), Box<dyn Error>> {
 //!    let bytes = vtpm::get_report()?;
 //!    let hcl_report = hcl::HclReport::new(bytes)?;
 //!    let var_data_hash = hcl_report.var_data_sha256();
 //!    let snp_report: AttestationReport = hcl_report.try_into()?;
 //!
-//!    let vcek = amd_kds::get_vcek(&snp_report)?;
-//!    let cert_chain = amd_kds::get_cert_chain()?;
+//!    let vcek = amd_kds::get_vcek(&snp_report).await?;
+//!    let cert_chain = amd_kds::get_cert_chain().await?;
 //!
 //!    cert_chain.validate()?;
 //!    vcek.validate(&cert_chain)?;
@@ -45,7 +45,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum HttpError {
     #[error("HTTP error")]
-    Http(#[from] Box<ureq::Error>),
+    Http(#[from] reqwest::Error),
     #[error("failed to read HTTP response")]
     Io(#[from] std::io::Error),
 }

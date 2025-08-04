@@ -17,11 +17,14 @@ pub struct Certificates {
 
 /// Get the VCEK certificate and the certificate chain from the Azure IMDS.
 /// **Note:** this can only be called from a Confidential VM.
-pub fn get_certs() -> Result<Certificates, HttpError> {
-    let res: Certificates = ureq::get(IMDS_CERT_URL)
-        .set("Metadata", "true")
-        .call()
-        .map_err(Box::new)?
-        .into_json()?;
+pub async fn get_certs() -> Result<Certificates, HttpError> {
+    let client = reqwest::Client::new();
+    let res: Certificates = client
+        .get(IMDS_CERT_URL)
+        .header("Metadata", "true")
+        .send()
+        .await?
+        .json()
+        .await?;
     Ok(res)
 }

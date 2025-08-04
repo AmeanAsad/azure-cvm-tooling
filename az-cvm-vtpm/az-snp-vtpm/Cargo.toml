@@ -24,7 +24,7 @@ openssl = { workspace = true, optional = true }
 serde.workspace = true
 sev.workspace = true
 thiserror.workspace = true
-ureq.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
@@ -33,5 +33,5 @@ hex.workspace = true
 [features]
 default = ["verifier"]
 attester = ["az-cvm-vtpm/tpm"]
-verifier = ["az-cvm-vtpm/openssl", "openssl", "ureq/tls"]
+verifier = ["az-cvm-vtpm/openssl", "openssl"]
 integration_test = []
