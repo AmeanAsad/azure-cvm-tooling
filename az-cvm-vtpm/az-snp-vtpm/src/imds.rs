@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 use crate::HttpError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const IMDS_CERT_URL: &str = "http://169.254.169.254/metadata/THIM/amd/certification";
 
 /// PEM encoded VCEK certificate and AMD certificate chain.
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Certificates {
     #[serde(rename = "vcekCert")]
     pub vcek: String,
