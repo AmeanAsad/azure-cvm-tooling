@@ -3,6 +3,7 @@
 
 use crate::HttpError;
 use serde::{Deserialize, Serialize};
+use serde_json;
 
 const IMDS_CERT_URL: &str = "http://169.254.169.254/metadata/THIM/amd/certification";
 
@@ -13,6 +14,18 @@ pub struct Certificates {
     pub vcek: String,
     #[serde(rename = "certificateChain")]
     pub amd_chain: String,
+}
+
+impl Certificates {
+    /// Convert the certificates to a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Convert the certificates to pretty-printed JSON string
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
 }
 
 /// Get the VCEK certificate and the certificate chain from the Azure IMDS.

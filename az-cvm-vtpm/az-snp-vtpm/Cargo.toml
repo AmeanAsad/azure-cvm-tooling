@@ -22,6 +22,7 @@ bincode.workspace = true
 clap.workspace = true
 serde.workspace = true
 sev.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 reqwest.workspace = true
 x509-cert = { version = "0.2", features = ["std"] }
