@@ -42,6 +42,6 @@ hex.workspace = true
 
 [features]
 default = ["verifier"]
-attester = ["az-cvm-vtpm/tpm"]
+attester = ["az-cvm-vtpm/tpm", "az-cvm-vtpm/openssl"]
 verifier = []
 integration_test = []
