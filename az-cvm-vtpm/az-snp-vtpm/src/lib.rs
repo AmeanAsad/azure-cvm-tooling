@@ -35,7 +35,9 @@
 //!  ```
 
 pub use az_cvm_vtpm::hcl;
+
 pub use az_cvm_vtpm::quote;
+
 #[cfg(feature = "attester")]
 pub use az_cvm_vtpm::vtpm;
 use thiserror::Error;
