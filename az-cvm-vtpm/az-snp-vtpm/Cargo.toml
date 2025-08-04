@@ -25,6 +25,16 @@ serde.workspace = true
 sev.workspace = true
 thiserror.workspace = true
 reqwest.workspace = true
+x509-cert = { version = "0.2", features = ["std"] }
+rsa = { version = "0.9", features = ["sha2"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+p384 = { version = "0.13", features = ["ecdsa"] }  # Add P-384 support
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+signature = "2.0"
+sha2 = "0.10"
+der = "0.7"  # For DER encoding/decoding
+pem = "3.0"  # For PEM format support
+
 
 [dev-dependencies]
 serde_json.workspace = true

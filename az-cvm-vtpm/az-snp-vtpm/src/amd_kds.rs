@@ -3,9 +3,11 @@
 
 use crate::certs::{AmdChain, Vcek};
 use crate::HttpError;
-use openssl::x509::X509;
+use pem::parse_many;
 use sev::firmware::guest::AttestationReport;
 use thiserror::Error;
+use x509_cert::der::Decode;
+use x509_cert::Certificate;
 
 const KDS_CERT_SITE: &str = "https://kdsintf.amd.com";
 const KDS_VCEK: &str = "/vcek/v1";
@@ -20,10 +22,14 @@ fn get(url: &str) -> Result<Vec<u8>, HttpError> {
 
 #[derive(Error, Debug)]
 pub enum AmdKdsError {
-    #[error("openssl error")]
-    OpenSsl(#[from] openssl::error::ErrorStack),
+    #[error("X.509 certificate error: {0}")]
+    X509(#[from] x509_cert::der::Error),
+    #[error("PEM parsing error: {0}")]
+    Pem(#[from] pem::PemError),
     #[error("Http error")]
     Http(#[from] HttpError),
+    #[error("Certificate chain parsing error: expected 2 certificates, found {0}")]
+    InvalidChainLength(usize),
 }
 
 /// Retrieve the AMD chain of trust (ASK & ARK) from AMD's KDS
@@ -31,9 +37,16 @@ pub fn get_cert_chain() -> Result<AmdChain, AmdKdsError> {
     let url = format!("{KDS_CERT_SITE}{KDS_VCEK}/{SEV_PROD_NAME}/{KDS_CERT_CHAIN}");
     let bytes = get(&url)?;
 
-    let certs = X509::stack_from_pem(&bytes)?;
-    let ask = certs[0].clone();
-    let ark = certs[1].clone();
+    // Parse PEM certificates
+    let pem_objects = parse_many(&bytes)?;
+
+    if pem_objects.len() != 2 {
+        return Err(AmdKdsError::InvalidChainLength(pem_objects.len()));
+    }
+
+    // Convert PEM to Certificate objects
+    let ask = Certificate::from_der(&pem_objects[0].contents())?;
+    let ark = Certificate::from_der(&pem_objects[1].contents())?;
 
     let chain = AmdChain { ask, ark };
 
@@ -60,7 +73,7 @@ pub fn get_vcek(report: &AttestationReport) -> Result<Vcek, AmdKdsError> {
     );
 
     let bytes = get(&url)?;
-    let cert = X509::from_der(&bytes)?;
+    let cert = Certificate::from_der(&bytes)?;
     let vcek = Vcek(cert);
     Ok(vcek)
 }
