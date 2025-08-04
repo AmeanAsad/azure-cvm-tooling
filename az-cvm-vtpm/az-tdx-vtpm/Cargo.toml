@@ -22,11 +22,11 @@ bincode.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-ureq.workspace = true
+reqwest.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
-openssl.workspace = true
+openssl = { version = "0.10" }
 hex.workspace = true
 
 [features]

@@ -7,17 +7,30 @@ use az_cvm_vtpm::hcl::HclReport;
 use az_cvm_vtpm::hcl::{self, SNP_REPORT_SIZE};
 #[cfg(feature = "attester")]
 use az_cvm_vtpm::vtpm;
-use openssl::bn::BigNum;
 #[cfg(feature = "verifier")]
-use openssl::{ecdsa::EcdsaSig, sha::Sha384};
+use p384::{
+    // Changed from p256 to p384
+    ecdsa::{Signature, VerifyingKey},
+    PublicKey,
+};
 pub use sev::firmware::guest::AttestationReport;
+#[cfg(feature = "verifier")]
+use sha2::{Digest, Sha384};
+#[cfg(feature = "verifier")]
+use signature::DigestVerifier; // Changed to DigestVerifier
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ValidateError {
     #[cfg(feature = "verifier")]
-    #[error("openssl error")]
-    OpenSsl(#[from] openssl::error::ErrorStack),
+    #[error("ECDSA signature error: {0}")]
+    Ecdsa(#[from] p384::ecdsa::Error), // Changed to p384
+    #[cfg(feature = "verifier")]
+    #[error("Elliptic curve error: {0}")]
+    EllipticCurve(#[from] p384::elliptic_curve::Error), // Changed to p384
+    #[cfg(feature = "verifier")]
+    #[error("X.509 certificate error: {0}")]
+    X509(#[from] x509_cert::der::Error),
     #[error("TCB data is not valid")]
     Tcb,
     #[error("Measurement signature is not valid")]
@@ -26,6 +39,9 @@ pub enum ValidateError {
     Io(#[from] std::io::Error),
     #[error("bincode error")]
     Bincode(#[from] Box<bincode::ErrorKind>),
+    #[cfg(feature = "verifier")]
+    #[error("Unsupported public key algorithm")]
+    UnsupportedPublicKeyAlgorithm,
 }
 
 #[cfg(feature = "verifier")]
@@ -40,23 +56,37 @@ impl Validateable for AttestationReport {
             return Err(ValidateError::Tcb);
         }
 
-        let r_bytes: Vec<u8> = self.signature.r().iter().rev().cloned().collect();
-        let s_bytes: Vec<u8> = self.signature.s().iter().rev().cloned().collect();
+        // Get attestation report signature - directly use try_from like your working implementation
+        let signature = Signature::try_from(&self.signature)
+            .map_err(|_| ValidateError::MeasurementSignature)?;
 
-        let r = BigNum::from_slice(&r_bytes)?;
-        let s = BigNum::from_slice(&s_bytes)?;
+        // Extract the public key from the VCEK certificate
+        let public_key_info = &vcek.0.tbs_certificate.subject_public_key_info;
 
-        let report_sig: EcdsaSig = EcdsaSig::from_private_components(r, s).unwrap();
-        let vcek_pubkey = vcek.0.public_key()?.ec_key()?;
+        // Ensure this is an EC public key
+        const EC_PUBLIC_KEY_OID: x509_cert::der::oid::ObjectIdentifier =
+            x509_cert::der::oid::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
 
-        let mut hasher = Sha384::new();
+        if public_key_info.algorithm.oid != EC_PUBLIC_KEY_OID {
+            return Err(ValidateError::UnsupportedPublicKeyAlgorithm);
+        }
+
+        // Parse the EC public key using P-384
+        let public_key_bytes = public_key_info.subject_public_key.raw_bytes();
+        let public_key = PublicKey::from_sec1_bytes(public_key_bytes)?;
+        let verifying_key = VerifyingKey::from(&public_key);
+
+        // Get the measurable bytes (first 0x2A0 bytes of serialized report)
         let base_message = get_report_base(self)?;
-        hasher.update(&base_message);
-        let base_message_digest = hasher.finish();
 
-        if !report_sig.verify(&base_message_digest, &vcek_pubkey)? {
+        // Create digest with prefix (like your working implementation)
+        let digest = Sha384::new_with_prefix(&base_message);
+
+        // Verify using digest verifier (not regular verifier!)
+        if verifying_key.verify_digest(digest, &signature).is_err() {
             return Err(ValidateError::MeasurementSignature);
         }
+
         Ok(())
     }
 }

@@ -133,6 +133,10 @@ impl HclReport {
         self.report_type
     }
 
+    pub fn to_json(&self) -> Result<String, HclError> {
+        serde_json::to_string(&self.attestation_report).map_err(HclError::JsonParseError)
+    }
+
     fn report_slice(&self) -> &[u8] {
         match self.report_type {
             ReportType::Tdx => self.bytes[TD_REPORT_RANGE].as_ref(),
