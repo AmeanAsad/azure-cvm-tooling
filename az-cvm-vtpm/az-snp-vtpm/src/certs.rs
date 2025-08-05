@@ -80,6 +80,13 @@ impl AmdChain {
         let signature_algorithm = &cert_to_verify.signature_algorithm;
         let signature = cert_to_verify.signature.raw_bytes();
 
+        // Extract subject/issuer info for debugging
+        let cert_subject = cert_to_verify.tbs_certificate.subject.to_string();
+        let signing_cert_subject = signing_cert.tbs_certificate.subject.to_string();
+
+        println!("🔍 === Certificate Verification ===");
+        println!("🔍 Certificate to verify subject: {}", cert_subject);
+        println!("🔍 Signing certificate subject: {}", signing_cert_subject);
         println!(
             "🔍 Verifying signature with algorithm OID: {:?}",
             signature_algorithm.oid
@@ -140,30 +147,48 @@ impl AmdChain {
                         public_key_info.algorithm.oid,
                     ));
                 }
-                let rsa_key =
-                    RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes())?;
-                println!("🔍 RSA PSS key size: {} bits", rsa_key.size() * 8);
+                let rsa_key_result =
+                    RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes());
+                let rsa_key = match rsa_key_result {
+                    Ok(key) => {
+                        println!("🔍 RSA PSS key size: {} bits", key.size() * 8);
+                        key
+                    }
+                    Err(e) => {
+                        println!("❌ Failed to parse RSA key: {:?}", e);
+                        return Err(ValidateError::SignatureVerificationFailed);
+                    }
+                };
 
-                let signature_pss = rsa::pss::Signature::try_from(signature)
-                    .map_err(|_| ValidateError::SignatureVerificationFailed)?;
+                let signature_pss = rsa::pss::Signature::try_from(signature).map_err(|e| {
+                    println!("❌ Failed to parse PSS signature: {:?}", e);
+                    ValidateError::SignatureVerificationFailed
+                })?;
 
                 // Try SHA-256 first (most common)
                 let verifying_key_256 = PssVerifyingKey::<Sha256>::new(rsa_key.clone());
-                if verifying_key_256
-                    .verify(&tbs_cert_der, &signature_pss)
-                    .is_ok()
-                {
+                let sha256_result = verifying_key_256.verify(&tbs_cert_der, &signature_pss);
+                if sha256_result.is_ok() {
                     println!("🔍 RSA PSS SHA256 verification: SUCCESS");
                     return Ok(true);
                 }
-                println!("🔍 RSA PSS SHA256 verification: FAILED, trying SHA384");
+                println!(
+                    "🔍 RSA PSS SHA256 verification: FAILED ({:?}), trying SHA384",
+                    sha256_result.err()
+                );
 
                 // Try SHA-384 if SHA-256 failed
                 let verifying_key_384 = PssVerifyingKey::<Sha384>::new(rsa_key);
-                let result = verifying_key_384
-                    .verify(&tbs_cert_der, &signature_pss)
-                    .is_ok();
-                println!("🔍 RSA PSS SHA384 verification result: {}", result);
+                let sha384_result = verifying_key_384.verify(&tbs_cert_der, &signature_pss);
+                let result = sha384_result.is_ok();
+                if result {
+                    println!("🔍 RSA PSS SHA384 verification: SUCCESS");
+                } else {
+                    println!(
+                        "🔍 RSA PSS SHA384 verification: FAILED ({:?})",
+                        sha384_result.err()
+                    );
+                }
                 Ok(result)
             }
             ECDSA_WITH_SHA256 => {
@@ -186,7 +211,6 @@ impl AmdChain {
             }
         }
     }
-
     fn verify_ecdsa_signature(
         &self,
         cert_to_verify: &Certificate,
