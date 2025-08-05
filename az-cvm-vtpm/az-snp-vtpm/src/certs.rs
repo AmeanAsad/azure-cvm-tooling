@@ -97,9 +97,22 @@ impl AmdChain {
         );
         println!("🔍 Signature length: {} bytes", signature.len());
 
+        // Add signature hash for comparison
+        use sha2::{Digest, Sha256 as Sha256Hash};
+        let sig_hash = Sha256Hash::digest(signature);
+        println!("🔍 Signature SHA256: {:02x?}", &sig_hash[..8]); // First 8 bytes only
+
+        // Add public key hash for comparison
+        let pk_hash = Sha256Hash::digest(public_key_info.subject_public_key.raw_bytes());
+        println!("🔍 Public key SHA256: {:02x?}", &pk_hash[..8]); // First 8 bytes only
+
         // Get the TBS (To Be Signed) certificate data
         let tbs_cert_der = cert_to_verify.tbs_certificate.to_der()?;
         println!("🔍 TBS certificate length: {} bytes", tbs_cert_der.len());
+
+        // Add TBS hash for comparison
+        let tbs_hash = Sha256Hash::digest(&tbs_cert_der);
+        println!("🔍 TBS SHA256: {:02x?}", &tbs_hash[..8]); // First 8 bytes only
 
         // Handle different signature algorithms
         match signature_algorithm.oid {
@@ -141,12 +154,28 @@ impl AmdChain {
             }
             RSA_PSS => {
                 println!("🔍 Using RSA PSS");
+
+                // Check if there are PSS parameters in the signature algorithm
+                if let Some(params) = &signature_algorithm.parameters {
+                    println!("🔍 Signature algorithm has parameters: {:?}", params);
+                } else {
+                    println!("🔍 No signature algorithm parameters found");
+                }
+
                 // Extract RSA public key for PSS
                 if public_key_info.algorithm.oid != RSA_ENCRYPTION {
                     return Err(ValidateError::UnsupportedPublicKeyAlgorithm(
                         public_key_info.algorithm.oid,
                     ));
                 }
+
+                // Check if the public key has PSS parameters
+                if let Some(pk_params) = &public_key_info.algorithm.parameters {
+                    println!("🔍 Public key algorithm has parameters: {:?}", pk_params);
+                } else {
+                    println!("🔍 No public key algorithm parameters found");
+                }
+
                 let rsa_key_result =
                     RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes());
                 let rsa_key = match rsa_key_result {
@@ -165,7 +194,10 @@ impl AmdChain {
                     ValidateError::SignatureVerificationFailed
                 })?;
 
-                // Try SHA-256 first (most common)
+                // Try different salt lengths - PSS can be sensitive to this
+                println!("🔍 Trying PSS verification with different configurations...");
+
+                // Try SHA-256 with default salt length
                 let verifying_key_256 = PssVerifyingKey::<Sha256>::new(rsa_key.clone());
                 let sha256_result = verifying_key_256.verify(&tbs_cert_der, &signature_pss);
                 if sha256_result.is_ok() {
@@ -173,23 +205,24 @@ impl AmdChain {
                     return Ok(true);
                 }
                 println!(
-                    "🔍 RSA PSS SHA256 verification: FAILED ({:?}), trying SHA384",
+                    "🔍 RSA PSS SHA256 verification: FAILED ({:?})",
                     sha256_result.err()
                 );
 
-                // Try SHA-384 if SHA-256 failed
-                let verifying_key_384 = PssVerifyingKey::<Sha384>::new(rsa_key);
+                // Try SHA-384 with default salt length
+                let verifying_key_384 = PssVerifyingKey::<Sha384>::new(rsa_key.clone());
                 let sha384_result = verifying_key_384.verify(&tbs_cert_der, &signature_pss);
-                let result = sha384_result.is_ok();
-                if result {
+                if sha384_result.is_ok() {
                     println!("🔍 RSA PSS SHA384 verification: SUCCESS");
-                } else {
-                    println!(
-                        "🔍 RSA PSS SHA384 verification: FAILED ({:?})",
-                        sha384_result.err()
-                    );
+                    return Ok(true);
                 }
-                Ok(result)
+                println!(
+                    "🔍 RSA PSS SHA384 verification: FAILED ({:?})",
+                    sha384_result.err()
+                );
+
+                println!("🔍 All PSS verification attempts failed");
+                Ok(false)
             }
             ECDSA_WITH_SHA256 => {
                 println!("🔍 Using ECDSA with SHA256");
@@ -211,6 +244,7 @@ impl AmdChain {
             }
         }
     }
+
     fn verify_ecdsa_signature(
         &self,
         cert_to_verify: &Certificate,
