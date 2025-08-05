@@ -82,44 +82,12 @@ impl AmdChain {
         let signature_algorithm = &cert_to_verify.signature_algorithm;
         let signature = cert_to_verify.signature.raw_bytes();
 
-        // Extract subject/issuer info for debugging
-        let cert_subject = cert_to_verify.tbs_certificate.subject.to_string();
-        let signing_cert_subject = signing_cert.tbs_certificate.subject.to_string();
-
-        println!("🔍 === Certificate Verification ===");
-        println!("🔍 Certificate to verify subject: {}", cert_subject);
-        println!("🔍 Signing certificate subject: {}", signing_cert_subject);
-        println!(
-            "🔍 Verifying signature with algorithm OID: {:?}",
-            signature_algorithm.oid
-        );
-        println!(
-            "🔍 Public key algorithm OID: {:?}",
-            public_key_info.algorithm.oid
-        );
-        println!("🔍 Signature length: {} bytes", signature.len());
-
-        // Add signature hash for comparison
-        use sha2::{Digest, Sha256 as Sha256Hash};
-        let sig_hash = Sha256Hash::digest(signature);
-        println!("🔍 Signature SHA256: {:02x?}", &sig_hash[..8]); // First 8 bytes only
-
-        // Add public key hash for comparison
-        let pk_hash = Sha256Hash::digest(public_key_info.subject_public_key.raw_bytes());
-        println!("🔍 Public key SHA256: {:02x?}", &pk_hash[..8]); // First 8 bytes only
-
         // Get the TBS (To Be Signed) certificate data
         let tbs_cert_der = cert_to_verify.tbs_certificate.to_der()?;
-        println!("🔍 TBS certificate length: {} bytes", tbs_cert_der.len());
-
-        // Add TBS hash for comparison
-        let tbs_hash = Sha256Hash::digest(&tbs_cert_der);
-        println!("🔍 TBS SHA256: {:02x?}", &tbs_hash[..8]); // First 8 bytes only
 
         // Handle different signature algorithms
         match signature_algorithm.oid {
             RSA_WITH_SHA256 => {
-                println!("🔍 Using RSA with SHA256");
                 // Extract RSA public key
                 if public_key_info.algorithm.oid != RSA_ENCRYPTION {
                     return Err(ValidateError::UnsupportedPublicKeyAlgorithm(
@@ -128,16 +96,12 @@ impl AmdChain {
                 }
                 let rsa_key =
                     RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes())?;
-                println!("🔍 RSA key size: {} bits", rsa_key.size() * 8);
                 let verifying_key = VerifyingKey::<Sha256>::new(rsa_key);
                 let signature = rsa::pkcs1v15::Signature::try_from(signature)
                     .map_err(|_| ValidateError::SignatureVerificationFailed)?;
-                let result = verifying_key.verify(&tbs_cert_der, &signature).is_ok();
-                println!("🔍 RSA SHA256 verification result: {}", result);
-                Ok(result)
+                Ok(verifying_key.verify(&tbs_cert_der, &signature).is_ok())
             }
             RSA_WITH_SHA384 => {
-                println!("🔍 Using RSA with SHA384");
                 // Extract RSA public key
                 if public_key_info.algorithm.oid != RSA_ENCRYPTION {
                     return Err(ValidateError::UnsupportedPublicKeyAlgorithm(
@@ -146,25 +110,12 @@ impl AmdChain {
                 }
                 let rsa_key =
                     RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes())?;
-                println!("🔍 RSA key size: {} bits", rsa_key.size() * 8);
                 let verifying_key = VerifyingKey::<Sha384>::new(rsa_key);
                 let signature = rsa::pkcs1v15::Signature::try_from(signature)
                     .map_err(|_| ValidateError::SignatureVerificationFailed)?;
-                let result = verifying_key.verify(&tbs_cert_der, &signature).is_ok();
-                println!("🔍 RSA SHA384 verification result: {}", result);
-                Ok(result)
+                Ok(verifying_key.verify(&tbs_cert_der, &signature).is_ok())
             }
             RSA_PSS => {
-                println!("🔍 Using RSA PSS");
-
-                // Check if there are PSS parameters in the signature algorithm
-                if let Some(params) = &signature_algorithm.parameters {
-                    println!("🔍 Signature algorithm has parameters: {:?}", params);
-                    println!("🔍 Raw parameter bytes: {:02x?}", params.value().bytes());
-                } else {
-                    println!("🔍 No signature algorithm parameters found");
-                }
-
                 // Extract RSA public key for PSS
                 if public_key_info.algorithm.oid != RSA_ENCRYPTION {
                     return Err(ValidateError::UnsupportedPublicKeyAlgorithm(
@@ -172,107 +123,33 @@ impl AmdChain {
                     ));
                 }
 
-                // Check if the public key has PSS parameters
-                if let Some(pk_params) = &public_key_info.algorithm.parameters {
-                    println!("🔍 Public key algorithm has parameters: {:?}", pk_params);
-                } else {
-                    println!("🔍 No public key algorithm parameters found");
-                }
+                let rsa_key =
+                    RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes())?;
+                let signature_pss = rsa::pss::Signature::try_from(signature)
+                    .map_err(|_| ValidateError::SignatureVerificationFailed)?;
 
-                let rsa_key_result =
-                    RsaPublicKey::from_pkcs1_der(public_key_info.subject_public_key.raw_bytes());
-                let rsa_key = match rsa_key_result {
-                    Ok(key) => {
-                        println!("🔍 RSA PSS key size: {} bits", key.size() * 8);
-                        key
-                    }
-                    Err(e) => {
-                        println!("❌ Failed to parse RSA key: {:?}", e);
-                        return Err(ValidateError::SignatureVerificationFailed);
-                    }
-                };
-
-                let signature_pss = rsa::pss::Signature::try_from(signature).map_err(|e| {
-                    println!("❌ Failed to parse PSS signature: {:?}", e);
-                    ValidateError::SignatureVerificationFailed
-                })?;
-
-                // Try different salt lengths - PSS can be sensitive to this
-                println!("🔍 Trying PSS verification with different configurations...");
-
-                // Try SHA-256 with default salt length
+                // Try SHA-256 first
                 let verifying_key_256 = PssVerifyingKey::<Sha256>::new(rsa_key.clone());
-                let sha256_result = verifying_key_256.verify(&tbs_cert_der, &signature_pss);
-                if sha256_result.is_ok() {
-                    println!("🔍 RSA PSS SHA256 verification: SUCCESS");
-                    return Ok(true);
-                }
-                println!(
-                    "🔍 RSA PSS SHA256 verification: FAILED ({:?})",
-                    sha256_result.err()
-                );
-
-                // Try SHA-384 with default salt length
-                let verifying_key_384 = PssVerifyingKey::<Sha384>::new(rsa_key.clone());
-                let sha384_result = verifying_key_384.verify(&tbs_cert_der, &signature_pss);
-                if sha384_result.is_ok() {
-                    println!("🔍 RSA PSS SHA384 verification: SUCCESS");
-                    return Ok(true);
-                }
-                println!(
-                    "🔍 RSA PSS SHA384 verification: FAILED ({:?})",
-                    sha384_result.err()
-                );
-
-                // Let's try a more manual approach with raw RSA verification
-                println!("🔍 Trying manual RSA verification...");
-
-                // Decrypt the signature manually
-                use rsa::traits::PublicKeyParts;
-                use rsa::BigUint;
-
-                let signature_int = BigUint::from_bytes_be(signature);
-                let decrypted = signature_int.modpow(rsa_key.e(), rsa_key.n());
-                let decrypted_bytes = decrypted.to_bytes_be();
-
-                println!(
-                    "🔍 Decrypted signature length: {} bytes",
-                    decrypted_bytes.len()
-                );
-                println!(
-                    "🔍 Decrypted signature start: {:02x?}",
-                    &decrypted_bytes[..std::cmp::min(32, decrypted_bytes.len())]
-                );
-
-                // Check if it starts with the expected PSS padding
-                if decrypted_bytes.len() >= 1 && decrypted_bytes[decrypted_bytes.len() - 1] == 0xbc
+                if verifying_key_256
+                    .verify(&tbs_cert_der, &signature_pss)
+                    .is_ok()
                 {
-                    println!("🔍 Signature has correct PSS trailer (0xbc)");
-                } else {
-                    println!("🔍 Signature does NOT have correct PSS trailer");
+                    return Ok(true);
                 }
 
-                println!("🔍 All PSS verification attempts failed");
-                Ok(false)
+                // Try SHA-384
+                let verifying_key_384 = PssVerifyingKey::<Sha384>::new(rsa_key);
+                Ok(verifying_key_384
+                    .verify(&tbs_cert_der, &signature_pss)
+                    .is_ok())
             }
             ECDSA_WITH_SHA256 => {
-                println!("🔍 Using ECDSA with SHA256");
-                let result =
-                    self.verify_ecdsa_signature(cert_to_verify, signing_cert, signature, false);
-                println!("🔍 ECDSA SHA256 verification result: {:?}", result);
-                result
+                self.verify_ecdsa_signature(cert_to_verify, signing_cert, signature, false)
             }
             ECDSA_WITH_SHA384 => {
-                println!("🔍 Using ECDSA with SHA384");
-                let result =
-                    self.verify_ecdsa_signature(cert_to_verify, signing_cert, signature, true);
-                println!("🔍 ECDSA SHA384 verification result: {:?}", result);
-                result
+                self.verify_ecdsa_signature(cert_to_verify, signing_cert, signature, true)
             }
-            oid => {
-                println!("❌ Unsupported algorithm OID: {:?}", oid);
-                Err(ValidateError::UnsupportedAlgorithm(oid))
-            }
+            oid => Err(ValidateError::UnsupportedAlgorithm(oid)),
         }
     }
 
