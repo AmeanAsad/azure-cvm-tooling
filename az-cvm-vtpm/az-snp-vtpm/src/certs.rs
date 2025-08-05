@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+use std::io::Read;
+
 use der::Encode;
 use p256::{ecdsa::VerifyingKey as P256VerifyingKey, PublicKey as P256PublicKey};
 use p384::{ecdsa::VerifyingKey as P384VerifyingKey, PublicKey as P384PublicKey}; // Add P-384 support
@@ -158,6 +160,7 @@ impl AmdChain {
                 // Check if there are PSS parameters in the signature algorithm
                 if let Some(params) = &signature_algorithm.parameters {
                     println!("🔍 Signature algorithm has parameters: {:?}", params);
+                    println!("🔍 Raw parameter bytes: {:02x?}", params.value().bytes());
                 } else {
                     println!("🔍 No signature algorithm parameters found");
                 }
@@ -220,6 +223,34 @@ impl AmdChain {
                     "🔍 RSA PSS SHA384 verification: FAILED ({:?})",
                     sha384_result.err()
                 );
+
+                // Let's try a more manual approach with raw RSA verification
+                println!("🔍 Trying manual RSA verification...");
+
+                // Decrypt the signature manually
+                use rsa::traits::PublicKeyParts;
+                use rsa::BigUint;
+
+                let signature_int = BigUint::from_bytes_be(signature);
+                let decrypted = signature_int.modpow(rsa_key.e(), rsa_key.n());
+                let decrypted_bytes = decrypted.to_bytes_be();
+
+                println!(
+                    "🔍 Decrypted signature length: {} bytes",
+                    decrypted_bytes.len()
+                );
+                println!(
+                    "🔍 Decrypted signature start: {:02x?}",
+                    &decrypted_bytes[..std::cmp::min(32, decrypted_bytes.len())]
+                );
+
+                // Check if it starts with the expected PSS padding
+                if decrypted_bytes.len() >= 1 && decrypted_bytes[decrypted_bytes.len() - 1] == 0xbc
+                {
+                    println!("🔍 Signature has correct PSS trailer (0xbc)");
+                } else {
+                    println!("🔍 Signature does NOT have correct PSS trailer");
+                }
 
                 println!("🔍 All PSS verification attempts failed");
                 Ok(false)
