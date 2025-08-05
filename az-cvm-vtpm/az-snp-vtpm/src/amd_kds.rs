@@ -64,7 +64,6 @@ fn hexify(bytes: &[u8]) -> String {
 
 /// Retrieve a VCEK cert from AMD's KDS, based on an AttestationReport's platform information
 pub async fn get_vcek(report: &AttestationReport) -> Result<Vcek, AmdKdsError> {
-    // Make async
     let hw_id = hexify(&*report.chip_id);
     let url = format!(
         "{KDS_CERT_SITE}{KDS_VCEK}/{SEV_PROD_NAME}/{hw_id}?blSPL={:02}&teeSPL={:02}&snpSPL={:02}&ucodeSPL={:02}",
@@ -74,8 +73,32 @@ pub async fn get_vcek(report: &AttestationReport) -> Result<Vcek, AmdKdsError> {
         report.reported_tcb.microcode
     );
 
-    let bytes = get(&url).await?; // Add .await
+    println!("🔍 Fetching VCEK from URL: {}", url);
+    println!("🔍 Chip ID: {}", hw_id);
+    println!(
+        "🔍 TCB levels: bl={:02}, tee={:02}, snp={:02}, ucode={:02}",
+        report.reported_tcb.bootloader,
+        report.reported_tcb.tee,
+        report.reported_tcb.snp,
+        report.reported_tcb.microcode
+    );
+
+    let bytes = get(&url).await?;
+    println!("🔍 Received {} bytes from KDS", bytes.len());
+
+    // Add some basic validation of the DER data
+    println!(
+        "🔍 First 32 bytes: {:02x?}",
+        &bytes[..std::cmp::min(32, bytes.len())]
+    );
+    println!(
+        "🔍 Last 32 bytes: {:02x?}",
+        &bytes[bytes.len().saturating_sub(32)..]
+    );
+
     let cert = Certificate::from_der(&bytes)?;
+    println!("🔍 Successfully parsed VCEK certificate");
+
     let vcek = Vcek(cert);
     Ok(vcek)
 }
